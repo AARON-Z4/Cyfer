@@ -43,5 +43,8 @@ class Settings:
 
 	yara_rules_path: str = os.getenv("YARA_RULES_PATH", "./data/yara")
 
+	# Auto scan interval (minutes); 0 disables by default
+	auto_scan_interval_minutes: int = int(os.getenv("AUTO_SCAN_INTERVAL_MINUTES", "0"))
+
 
 settings = Settings()

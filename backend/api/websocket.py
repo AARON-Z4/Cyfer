@@ -14,9 +14,11 @@ class ThreatWebSocketManager:
 			return
 		await websocket.accept()
 		self.active_connections.add(websocket)
+		logger.info("WS connected; total=%s", len(self.active_connections))
 
 	def disconnect(self, websocket: WebSocket) -> None:
 		self.active_connections.discard(websocket)
+		logger.info("WS disconnected; total=%s", len(self.active_connections))
 
 	async def broadcast(self, message: Dict[str, Any]) -> None:
 		dead: Set[WebSocket] = set()

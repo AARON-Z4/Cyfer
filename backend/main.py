@@ -19,6 +19,7 @@ from utils.db import init_db, dispose_engine
 from api.routes import api_router
 from api.websocket import ws_manager
 import contextlib
+import psutil
 
 
 
@@ -37,12 +38,57 @@ async def lifespan(app: FastAPI):
             await asyncio.sleep(30)
 
     heartbeat_task = asyncio.create_task(heartbeat_loop())
+
+    # Periodic system metrics broadcast
+    async def metrics_loop():
+        while True:
+            try:
+                cpu = psutil.cpu_percent(interval=None)
+                mem = psutil.virtual_memory()
+                disk = psutil.disk_usage('/')
+                await ws_manager.broadcast({
+                    "type": "system_metrics",
+                    "data": {
+                        "cpu": cpu,
+                        "mem": {"percent": mem.percent},
+                        "disk": {"percent": disk.percent},
+                    }
+                })
+            except Exception:
+                logger.warning("Metrics tick failed", exc_info=True)
+            await asyncio.sleep(10)
+
+    metrics_task = asyncio.create_task(metrics_loop())
+
+    # Optional periodic auto-scan loop (URL as a placeholder target)
+    async def autoscan_loop():
+        if settings.auto_scan_interval_minutes <= 0:
+            return
+        interval = max(1, settings.auto_scan_interval_minutes) * 60
+        from agents.url_analyzer import URLThreatAnalyzer
+        from api.websocket import ws_progress
+        while True:
+            try:
+                agent = URLThreatAnalyzer()
+                await ws_manager.broadcast(ws_progress(agent.name, "scheduled", 0, {"interval": settings.auto_scan_interval_minutes}))
+                await agent.analyze_url("https://example.com")
+            except Exception:
+                logger.warning("Autoscan tick failed", exc_info=True)
+            await asyncio.sleep(interval)
+
+    autoscan_task = asyncio.create_task(autoscan_loop())
     try:
         yield
     finally:
         heartbeat_task.cancel()
         with contextlib.suppress(Exception):
             await heartbeat_task
+        metrics_task.cancel()
+        with contextlib.suppress(Exception):
+            await metrics_task
+        autoscan_task.cancel()
+        with contextlib.suppress(Exception):
+            await autoscan_task
         await dispose_engine()
         logger.info("Application shutdown complete")
 

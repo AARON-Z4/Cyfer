@@ -11,6 +11,7 @@ const NetworkAnalyzer = lazy(() => import('../components/NetworkAnalyzer'))
 const FileScanner = lazy(() => import('../components/FileScanner'))
 const AgentStatus = lazy(() => import('../components/AgentStatus'))
 const ThreatIntelligence = lazy(() => import('../components/ThreatIntelligence'))
+const ScanHistory = lazy(() => import('../components/ScanHistory'))
 
 export default function App() {
     const [open, setOpen] = useState(false)
@@ -30,6 +31,7 @@ export default function App() {
                         <NavLink to="/file" className={({isActive}) => `px-2 py-2 rounded ${isActive ? 'bg-gray-800' : 'hover:bg-gray-900'}`}>File Scanner</NavLink>
                         <NavLink to="/agents" className={({isActive}) => `px-2 py-2 rounded ${isActive ? 'bg-gray-800' : 'hover:bg-gray-900'}`}>Agents</NavLink>
                         <NavLink to="/intel" className={({isActive}) => `px-2 py-2 rounded ${isActive ? 'bg-gray-800' : 'hover:bg-gray-900'}`}>Threat Intel</NavLink>
+                        <NavLink to="/history" className={({isActive}) => `px-2 py-2 rounded ${isActive ? 'bg-gray-800' : 'hover:bg-gray-900'}`}>Scan History</NavLink>
                     </nav>
                 </aside>
                 <main className="col-span-12 md:col-span-10 p-4 md:p-6">
@@ -42,6 +44,7 @@ export default function App() {
                             <Route path="/file" element={<FileScanner />} />
                             <Route path="/agents" element={<AgentStatus />} />
                             <Route path="/intel" element={<ThreatIntelligence />} />
+                            <Route path="/history" element={<ScanHistory />} />
                         </Routes>
                     </Suspense>
                 </main>

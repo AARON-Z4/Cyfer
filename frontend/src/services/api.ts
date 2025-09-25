@@ -17,4 +17,10 @@ export const api = {
 		}).then(r => r.data)
 	},
 	agentsStatus: () => client.get('/agents/status').then(r => r.data),
+    // New retrieval APIs
+    scanResults: (page = 1, pageSize = 20) => client.get(`/scan/results`, { params: { page, page_size: pageSize } }).then(r => r.data),
+    scanResultById: (scanId: number) => client.get(`/scan/results/${scanId}`).then(r => r.data),
+    scanHistoryByAgent: (agentType: string, page = 1, pageSize = 20) => client.get(`/scan/history/${agentType}`, { params: { page, page_size: pageSize } }).then(r => r.data),
+    getAutoscan: () => client.get('/autoscan').then(r => r.data),
+    setAutoscan: (intervalMinutes: number) => client.post('/autoscan', { interval_minutes: intervalMinutes }).then(r => r.data),
 }

@@ -3,16 +3,23 @@ import { useThreatStore } from '../store/useThreatStore'
 import { threatWS } from '../services/ws'
 import { api } from '../services/api'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { Card } from './ui/Card'
 
 function ThreatDashboardImpl() {
 	const events = useThreatStore(s => s.liveEvents)
 	const addEvent = useThreatStore(s => s.addEvent)
 	const [progress, setProgress] = useState<Record<string, number>>({})
 	const [alerts, setAlerts] = useState<string[]>([])
+	const [wsStatus, setWsStatus] = useState('disconnected')
 
 	useEffect(() => {
 		threatWS.connect()
+        const statusHandler = (s: string) => {
+            console.log('[WS status]', s)
+            setWsStatus(s)
+        }
 		const handler = (msg: any) => {
+            console.log('[WS message]', msg)
 			if (msg?.type === 'progress' && msg?.agent) {
 				setProgress(p => ({ ...p, [msg.agent]: msg.percent }))
 			}
@@ -22,7 +29,8 @@ function ThreatDashboardImpl() {
 			addEvent(msg)
 		}
 		threatWS.on(handler)
-		return () => threatWS.off(handler)
+        threatWS.onStatus(statusHandler)
+        return () => { threatWS.off(handler); threatWS.offStatus(statusHandler) }
 	}, [addEvent])
 
 	const chartData = events.slice(0, 20).map((e, i) => ({ idx: 20 - i, sev: sevScore(e?.data?.threat_level) }))
@@ -36,8 +44,11 @@ function ThreatDashboardImpl() {
 					))}
 				</div>
 			)}
-			<div className="grid grid-cols-3 gap-4">
-				<Card title="Live Threat Level">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card title="Connection">
+                    <div className="text-sm">WebSocket: <span className={wsBadge(wsStatus)}>{wsStatus}</span></div>
+                </Card>
+                <Card title="Live Threat Level">
 					<div className="h-48">
 						<ResponsiveContainer width="100%" height="100%">
 							<LineChart data={chartData}>
@@ -49,6 +60,16 @@ function ThreatDashboardImpl() {
 						</ResponsiveContainer>
 					</div>
 				</Card>
+                <Card title="System Metrics">
+                    <div className="grid grid-cols-3 gap-4 text-sm">
+                        <MetricGauge label="CPU" percent={Math.round((events.find(e => e.type==='system_metrics')?.data?.cpu) ?? 0)} />
+                        <MetricGauge label="Memory" percent={Math.round((events.find(e => e.type==='system_metrics')?.data?.mem?.percent) ?? 0)} />
+                        <MetricGauge label="Disk" percent={Math.round((events.find(e => e.type==='system_metrics')?.data?.disk?.percent) ?? 0)} />
+                    </div>
+                </Card>
+                <Card title="Auto Scan">
+                    <AutoScanControl />
+                </Card>
                 <Card title="Active Scans">
 						<div className="space-y-2">
 						{Object.entries(progress).map(([agent, pct]) => (
@@ -71,19 +92,6 @@ function ThreatDashboardImpl() {
 
 export default memo(ThreatDashboardImpl)
 
-function Card({ title, children }: { title: string, children: any }) {
-	return (
-		<div className="card">
-			<h2 className="card-title">{title}</h2>
-			{children}
-		</div>
-	)
-}
-
-function Button({ children, ...props }: any) {
-	return <button className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 rounded text-sm" {...props}>{children}</button>
-}
-
 function sevScore(level?: string) {
 	switch(level) {
 		case 'low': return 1
@@ -99,6 +107,51 @@ function sevName(n: number) {
 
 function sevColor(level?: string) {
 	return level === 'high' ? 'bg-red-500' : level === 'medium' ? 'bg-yellow-400' : 'bg-green-500'
+}
+
+function MetricGauge({ label, percent }: { label: string, percent: number }) {
+    const p = Math.max(0, Math.min(100, Number.isFinite(percent) ? percent : 0))
+    return (
+        <div>
+            <div className="text-xs text-gray-400 mb-1">{label}</div>
+            <div className="progress">
+                <div className={`progress-bar ${p>80?'bg-red-500':p>60?'bg-yellow-400':'bg-green-500'}`} style={{ width: `${p}%` }} />
+            </div>
+            <div className="text-xs mt-1">{p}%</div>
+        </div>
+    )
+}
+
+function wsBadge(s: string) {
+    const m = s || 'disconnected'
+    if (m === 'connected') return 'px-2 py-0.5 rounded bg-green-600/30 text-green-100 border border-green-700'
+    if (m === 'connecting') return 'px-2 py-0.5 rounded bg-yellow-600/30 text-yellow-100 border border-yellow-700'
+    if (m === 'error' || m === 'disconnected') return 'px-2 py-0.5 rounded bg-red-600/30 text-red-100 border border-red-700'
+    return 'px-2 py-0.5 rounded bg-gray-700 text-gray-200'
+}
+
+function AutoScanControl() {
+    const [interval, setInterval] = useState<number | null>(null)
+    const [saving, setSaving] = useState(false)
+    useEffect(() => { api.getAutoscan().then(d => setInterval(d.interval_minutes)) }, [])
+    const save = async (val: number) => {
+        setSaving(true)
+        await api.setAutoscan(val)
+        setInterval(val)
+        setSaving(false)
+    }
+    return (
+        <div className="flex items-center gap-3 text-sm">
+            <div>Interval:</div>
+            <select className="input !w-auto" value={interval ?? 0} onChange={e => save(parseInt(e.target.value))} disabled={saving}>
+                <option value={0}>Disabled</option>
+                <option value={1}>1 min</option>
+                <option value={5}>5 min</option>
+                <option value={10}>10 min</option>
+                <option value={30}>30 min</option>
+            </select>
+        </div>
+    )
 }
 
 function VirtualEventList({ events }: { events: any[] }) {

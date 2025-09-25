@@ -1,9 +1,14 @@
 from fastapi import APIRouter, UploadFile, File, Depends
 from pydantic import BaseModel, HttpUrl
-from typing import Any, Dict
+from typing import Any, Dict, List
+from sqlalchemy import select
+from fastapi.responses import StreamingResponse
+import csv
+import io
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from utils.logger import logger
+from utils.config import settings
 from agents.url_analyzer import URLThreatAnalyzer
 from agents.device_scanner import DeviceSecurityScanner
 from agents.network_monitor import NetworkTrafficMonitor
@@ -98,3 +103,137 @@ async def agents_status() -> AgentsStatusResponse:
 			{"name": "VulnerabilityAssessmentAgent", "status": "ready"},
 		]
 	}
+
+
+@api_router.post("/ws/test")
+async def ws_test_broadcast(payload: Dict[str, Any]) -> Dict[str, Any]:
+	# Test endpoint to send arbitrary WS messages for debugging
+	await ws_manager.broadcast({"type": "test", "data": payload})
+	return {"sent": True}
+
+
+class AutoScanConfig(BaseModel):
+	interval_minutes: int
+
+
+@api_router.get("/autoscan", response_model=AutoScanConfig)
+async def get_autoscan() -> AutoScanConfig:
+	return AutoScanConfig(interval_minutes=settings.auto_scan_interval_minutes)
+
+
+@api_router.post("/autoscan", response_model=AutoScanConfig)
+async def set_autoscan(cfg: AutoScanConfig) -> AutoScanConfig:
+	# For demo purposes, update in-memory settings only
+	object.__setattr__(settings, 'auto_scan_interval_minutes', max(0, int(cfg.interval_minutes)))
+	return AutoScanConfig(interval_minutes=settings.auto_scan_interval_minutes)
+
+
+# ---------------- Retrieval Models & Endpoints ----------------
+
+class ScanResultItem(BaseModel):
+	id: int
+	agent: str
+	category: str
+	threat_level: str
+	created_at: str
+	details: Dict[str, Any] | None = None
+
+	class Config:
+		from_attributes = True
+
+
+class PaginatedResults(BaseModel):
+	items: List[ScanResultItem]
+	page: int
+	page_size: int
+	has_next: bool
+
+
+@api_router.get("/scan/results", response_model=PaginatedResults)
+async def list_scan_results(page: int = 1, page_size: int = 20, db: AsyncSession = Depends(get_db)) -> PaginatedResults:
+	page = max(1, page)
+	page_size = max(1, min(100, page_size))
+	offset = (page - 1) * page_size
+	q = select(ScanResult).order_by(ScanResult.created_at.desc()).offset(offset).limit(page_size)
+	res = (await db.execute(q)).scalars().all()
+	items = [
+		ScanResultItem(
+			id=r.id,
+			agent=r.agent,
+			category=r.category,
+			threat_level=r.threat_level,
+			created_at=r.created_at.isoformat(),
+			details=getattr(r, "details", None),
+		)
+		for r in res
+	]
+	# infer has_next by fetching one more row
+	next_q = select(ScanResult.id).order_by(ScanResult.created_at.desc()).offset(offset + page_size).limit(1)
+	has_next = (await db.execute(next_q)).first() is not None
+	return PaginatedResults(items=items, page=page, page_size=page_size, has_next=has_next)
+
+
+@api_router.get("/scan/results/{scan_id}", response_model=ScanResultItem)
+async def get_scan_result(scan_id: int, db: AsyncSession = Depends(get_db)) -> ScanResultItem:
+	q = select(ScanResult).where(ScanResult.id == scan_id)
+	obj = (await db.execute(q)).scalars().first()
+	if not obj:
+		return ScanResultItem(id=0, agent="", category="", threat_level="", created_at="", details=None)  # FastAPI will still return 200; adjust to 404 if desired
+	return ScanResultItem(
+		id=obj.id,
+		agent=obj.agent,
+		category=obj.category,
+		threat_level=obj.threat_level,
+		created_at=obj.created_at.isoformat(),
+		details=getattr(obj, "details", None),
+	)
+
+
+@api_router.get("/scan/history/{agent_type}", response_model=PaginatedResults)
+async def scan_history(agent_type: str, page: int = 1, page_size: int = 20, db: AsyncSession = Depends(get_db)) -> PaginatedResults:
+	page = max(1, page)
+	page_size = max(1, min(100, page_size))
+	offset = (page - 1) * page_size
+	q = (
+		select(ScanResult)
+		.where(ScanResult.agent == agent_type)
+		.order_by(ScanResult.created_at.desc())
+		.offset(offset)
+		.limit(page_size)
+	)
+	res = (await db.execute(q)).scalars().all()
+	items = [
+		ScanResultItem(
+			id=r.id,
+			agent=r.agent,
+			category=r.category,
+			threat_level=r.threat_level,
+			created_at=r.created_at.isoformat(),
+			details=getattr(r, "details", None),
+		)
+		for r in res
+	]
+	next_q = (
+		select(ScanResult.id)
+		.where(ScanResult.agent == agent_type)
+		.order_by(ScanResult.created_at.desc())
+		.offset(offset + page_size)
+		.limit(1)
+	)
+	has_next = (await db.execute(next_q)).first() is not None
+	return PaginatedResults(items=items, page=page, page_size=page_size, has_next=has_next)
+
+
+@api_router.get("/scan/results.csv")
+async def export_scan_results_csv(db: AsyncSession = Depends(get_db)):
+	q = select(ScanResult).order_by(ScanResult.created_at.desc()).limit(1000)
+	rows = (await db.execute(q)).scalars().all()
+	buf = io.StringIO()
+	w = csv.writer(buf)
+	w.writerow(["id", "agent", "category", "threat_level", "created_at"])  # keep it simple
+	for r in rows:
+		w.writerow([r.id, r.agent, r.category, r.threat_level, r.created_at.isoformat()])
+	buf.seek(0)
+	return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv", headers={
+		"Content-Disposition": "attachment; filename=scan_results.csv"
+	})
