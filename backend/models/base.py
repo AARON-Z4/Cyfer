@@ -1,7 +1,7 @@
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Integer, DateTime, JSON, Index
+from sqlalchemy import String, Integer, DateTime, JSON, Index, func
 
 
 class Base(DeclarativeBase):
@@ -22,7 +22,7 @@ class ScanResult(Base):
 	threat_level: Mapped[str] = mapped_column(String(16), nullable=False)
 	# 'metadata' is reserved in SQLAlchemy Declarative; use 'details' instead
 	details: Mapped[Optional[dict]] = mapped_column("metadata", JSON, nullable=True)
-	created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+	created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class ThreatEvent(Base):
@@ -32,4 +32,4 @@ class ThreatEvent(Base):
 	title: Mapped[str] = mapped_column(String(128), nullable=False)
 	description: Mapped[Optional[str]] = mapped_column(String(512))
 	severity: Mapped[str] = mapped_column(String(16), nullable=False)
-	created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+	created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)

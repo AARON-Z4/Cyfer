@@ -83,6 +83,20 @@ async def scan_file(file: UploadFile = File(...), db: AsyncSession = Depends(get
 	return {"agent": agent.name, "result": result}
 
 
+class VulnerabilityScanRequest(BaseModel):
+	product: str | None = None
+
+
+@api_router.post("/scan/vulnerability", response_model=ScanResponse)
+async def scan_vulnerability(payload: VulnerabilityScanRequest, db: AsyncSession = Depends(get_db)) -> ScanResponse:
+	logger.info(f"Scanning vulnerabilities for product: {payload.product}")
+	agent = VulnerabilityAssessmentAgent()
+	result = await agent.check_vulnerabilities(payload.product)
+	await _save_result(db, agent.name, "vulnerability", result.get("threat_level", "low"), result)
+	await ws_manager.broadcast({"type": "vuln_scan", "data": result})
+	return {"agent": agent.name, "result": result}
+
+
 class AgentStatusItem(BaseModel):
 	name: str
 	status: str

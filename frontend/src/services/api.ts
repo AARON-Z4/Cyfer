@@ -16,6 +16,7 @@ export const api = {
 			headers: { 'Content-Type': 'multipart/form-data' },
 		}).then(r => r.data)
 	},
+	scanVulnerability: (product?: string) => client.post('/scan/vulnerability', { product }).then(r => r.data),
 	agentsStatus: () => client.get('/agents/status').then(r => r.data),
     // New retrieval APIs
     scanResults: (page = 1, pageSize = 20) => client.get(`/scan/results`, { params: { page, page_size: pageSize } }).then(r => r.data),
