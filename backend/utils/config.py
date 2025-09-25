@@ -22,15 +22,16 @@ class Settings:
 	backend_host: str = os.getenv("BACKEND_HOST", "0.0.0.0")
 	backend_port: int = int(os.getenv("BACKEND_PORT", "8000"))
 
-	cors_origins: Tuple[str, ...] = _get_list("CORS_ORIGINS", "http://localhost:5173")
+	# Include common localhost variants by default for dev
+	cors_origins: Tuple[str, ...] = _get_list("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
 
 	database_url: str = os.getenv("DATABASE_URL", "sqlite:///./data/threat_detector.db")
 
 	websocket_path: str = os.getenv("WEBSOCKET_PATH", "/ws/threats")
 
-	# Keys
-	virus_total_api_key: str = os.getenv("1cd20397d55ae1b845425a1ea65c65f98046c2334f95a735bfa2072751102ae7", "")
-	abuseipdb_api_key: str = os.getenv("9d1bb3c11ed902a03d5a89c60f4a1e25d0b2619de758cf17f668f2a64a01eef06ff710ff29fc115f", "")
+	# Keys (use human-readable env var names) - DO NOT hardcode secrets
+	virus_total_api_key: str = os.getenv("VIRUSTOTAL_API_KEY", "")
+	abuseipdb_api_key: str = os.getenv("ABUSEIPDB_API_KEY", "")
 	nvd_api_key: str = os.getenv("NVD_API_KEY", "")
 
 	# Feeds

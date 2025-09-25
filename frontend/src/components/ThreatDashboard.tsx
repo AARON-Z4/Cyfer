@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { useThreatStore } from '../store/useThreatStore'
 import { threatWS } from '../services/ws'
 import { api } from '../services/api'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 
-export default function ThreatDashboard() {
+function ThreatDashboardImpl() {
 	const events = useThreatStore(s => s.liveEvents)
 	const addEvent = useThreatStore(s => s.addEvent)
 	const [progress, setProgress] = useState<Record<string, number>>({})
@@ -32,7 +32,7 @@ export default function ThreatDashboard() {
 			{alerts.length > 0 && (
 				<div className="space-y-1">
 					{alerts.map((a, i) => (
-						<div key={i} className="px-3 py-2 bg-red-600/20 border border-red-700 text-red-200 rounded text-sm">{a}</div>
+						<div key={i} className="alert-danger">{a}</div>
 					))}
 				</div>
 			)}
@@ -49,37 +49,32 @@ export default function ThreatDashboard() {
 						</ResponsiveContainer>
 					</div>
 				</Card>
-				<Card title="Active Scans">
-					<div className="space-y-2">
+                <Card title="Active Scans">
+						<div className="space-y-2">
 						{Object.entries(progress).map(([agent, pct]) => (
 							<div key={agent}>
 								<div className="text-xs text-gray-400 mb-1">{agent}</div>
-								<div className="w-full h-2 bg-gray-800 rounded">
-									<div className="h-2 bg-indigo-500 rounded" style={{ width: `${pct}%` }}></div>
-								</div>
+									<div className="progress">
+										<div className="progress-bar" style={{ width: `${pct}%` }}></div>
+									</div>
 							</div>
 						))}
 					</div>
 				</Card>
-				<Card title="Recent Events">
-					<ul className="text-sm max-h-48 overflow-auto divide-y divide-gray-800">
-						{events.slice(0, 10).map((e, idx) => (
-							<li key={idx} className="py-2">
-								<span className={`inline-block w-2 h-2 rounded-full mr-2 ${sevColor(e?.data?.threat_level)}`}></span>
-								{e.type} {e?.agent ? `(${e.agent})` : ''} {e?.percent !== undefined ? `- ${e.percent}%` : ''}
-							</li>
-						))}
-					</ul>
+                <Card title="Recent Events">
+                    <VirtualEventList events={events} />
 				</Card>
 			</div>
 		</div>
 	)
 }
 
+export default memo(ThreatDashboardImpl)
+
 function Card({ title, children }: { title: string, children: any }) {
 	return (
-		<div className="border border-gray-800 rounded-md p-4 bg-gray-900/40">
-			<h2 className="text-sm font-medium mb-2 text-gray-300">{title}</h2>
+		<div className="card">
+			<h2 className="card-title">{title}</h2>
 			{children}
 		</div>
 	)
@@ -104,4 +99,28 @@ function sevName(n: number) {
 
 function sevColor(level?: string) {
 	return level === 'high' ? 'bg-red-500' : level === 'medium' ? 'bg-yellow-400' : 'bg-green-500'
+}
+
+function VirtualEventList({ events }: { events: any[] }) {
+    const itemHeight = 40
+    const containerHeight = 200
+    const count = events.length
+    const [scrollTop, setScrollTop] = useState(0)
+    const startIndex = Math.max(0, Math.floor(scrollTop / itemHeight) - 3)
+    const endIndex = Math.min(count, startIndex + Math.ceil(containerHeight / itemHeight) + 6)
+    const visible = events.slice(startIndex, endIndex)
+    const topPadding = startIndex * itemHeight
+    const bottomPadding = Math.max(0, (count - endIndex) * itemHeight)
+    return (
+        <div className="text-sm overflow-auto divide-y divide-gray-800" style={{ height: `${containerHeight}px` }} onScroll={e => setScrollTop((e.target as HTMLDivElement).scrollTop)}>
+            <div style={{ paddingTop: `${topPadding}px`, paddingBottom: `${bottomPadding}px` }}>
+                {visible.map((e, idx) => (
+                    <div key={idx} className="py-2 flex items-center">
+                        <span className={`inline-block w-2 h-2 rounded-full mr-2 ${sevColor(e?.data?.threat_level)}`}></span>
+                        {e.type} {e?.agent ? `(${e.agent})` : ''} {e?.percent !== undefined ? `- ${e.percent}%` : ''}
+                    </div>
+                ))}
+            </div>
+        </div>
+    )
 }

@@ -6,8 +6,12 @@ from utils.logger import logger
 class ThreatWebSocketManager:
 	def __init__(self) -> None:
 		self.active_connections: Set[WebSocket] = set()
+		self.max_connections: int = 100
 
 	async def connect(self, websocket: WebSocket) -> None:
+		if len(self.active_connections) >= self.max_connections:
+			await websocket.close()
+			return
 		await websocket.accept()
 		self.active_connections.add(websocket)
 
@@ -21,6 +25,16 @@ class ThreatWebSocketManager:
 				await connection.send_json(message)
 			except Exception as exc:
 				logger.warning(f"WebSocket send failed: {exc}")
+				dead.add(connection)
+		for d in dead:
+			self.disconnect(d)
+
+	async def heartbeat(self) -> None:
+		dead: Set[WebSocket] = set()
+		for connection in list(self.active_connections):
+			try:
+				await connection.send_json({"type": "heartbeat", "ts": __import__("time").time()})
+			except Exception:
 				dead.add(connection)
 		for d in dead:
 			self.disconnect(d)

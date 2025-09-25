@@ -1,20 +1,29 @@
 import { useState } from 'react'
 import { api } from '../services/api'
+import { Spinner } from './ui/Spinner'
+import { useToast } from './ui/Toast'
 
 export default function DeviceMonitor() {
 	const [result, setResult] = useState<any | null>(null)
 	const [loading, setLoading] = useState(false)
+    const { show } = useToast()
 
 	const run = async () => {
 		setLoading(true)
-		try { setResult(await api.scanDevice()) } finally { setLoading(false) }
+        try {
+            const data = await api.scanDevice()
+            setResult(data)
+            show('Device scan complete')
+        } catch (e) {
+            show('Device scan failed', 'error')
+        } finally { setLoading(false) }
 	}
 
 	return (
 		<div className="space-y-3">
-			<button className="px-3 py-1 bg-indigo-600 rounded" onClick={run} disabled={loading}>Scan Device</button>
+            <button className="btn-primary" onClick={run} disabled={loading}>{loading ? (<span className="inline-flex items-center gap-2"><Spinner size={16} /> Scanning...</span>) : 'Scan Device'}</button>
 			{result && (
-				<pre className="bg-gray-900 border border-gray-800 p-3 rounded text-sm overflow-auto">{JSON.stringify(result, null, 2)}</pre>
+				<pre className="code-block">{JSON.stringify(result, null, 2)}</pre>
 			)}
 		</div>
 	)

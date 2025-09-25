@@ -1,7 +1,23 @@
 import logging
 import sys
+import json
 
 from .config import settings
+
+
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "ts": self.formatTime(record, datefmt="%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        # include extras like request_id if present
+        for key in ("request_id",):
+            if hasattr(record, key):
+                payload[key] = getattr(record, key)
+        return json.dumps(payload)
 
 
 def setup_logger() -> logging.Logger:
@@ -11,9 +27,7 @@ def setup_logger() -> logging.Logger:
 
 	if not logger.handlers:
 		handler = logging.StreamHandler(sys.stdout)
-		formatter = logging.Formatter(
-			"%(asctime)s | %(levelname)s | %(name)s | %(message)s"
-		)
+		formatter = JsonFormatter()
 		handler.setFormatter(formatter)
 		logger.addHandler(handler)
 
